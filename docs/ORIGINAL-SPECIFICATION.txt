@@ -1,0 +1,929 @@
+You are a senior Laravel architect, full-stack developer, billing systems engineer, and QA engineer.
+
+Build a complete, working Stitching Management application with both frontend and backend.
+
+This is an implementation task. Produce actual source code, database migrations, working screens, billing workflows, automated tests, documentation, and a downloadable source ZIP. Do not stop after a plan, database schema, UI mockup, or partial scaffold.
+
+If an original specification or Odoo module is attached, inspect it first. Create a requirement-to-implementation checklist and preserve its authorized business scope. Translate Odoo-specific dependencies into native Laravel implementations.
+
+Do not claim a feature works unless it has been implemented and verified. Explicitly identify tests that could not run.
+
+==================================================
+1. BUSINESS SCOPE AND CONSTRAINTS
+==================================================
+
+Build for one stitching business operated by one owner.
+
+Include:
+- Owner authentication.
+- Customers and customer history.
+- Stitching service products and prices.
+- Multiple garments per order.
+- Configurable measurement templates.
+- Independent historical measurement snapshots.
+- Stitching workflow and delivery tracking.
+- Invoices, advances, partial payments, credits and refunds.
+- Dashboard, retention, follow-up, reports and PDF printing.
+- Business configuration and audit history.
+
+Do not introduce unrelated business fields or modules:
+- No fabric inventory or fabric selling.
+- No suppliers or purchasing.
+- No employees, tailor assignment, payroll or HR.
+- No branches, multi-company or subscription SaaS.
+- No customer portal or public registration.
+- No AI features or external payment gateways unless separately requested.
+
+Only add technical fields necessary for authentication, relationships, data integrity, numbering, concurrency, auditability and the specified billing workflows.
+
+Do not require a customer email address to place an order.
+
+==================================================
+2. TECHNOLOGY AND ARCHITECTURE
+==================================================
+
+Use:
+- Laravel 13 with a supported compatible PHP version.
+- Official Laravel React starter kit.
+- React, TypeScript and Inertia.
+- Tailwind CSS and compatible accessible UI components.
+- PostgreSQL.
+- Laravel session authentication and authorization policies.
+- Laravel queues and scheduler where appropriate.
+- PHPUnit or Pest for backend tests.
+- Playwright for critical browser workflows.
+
+Verify package compatibility against official documentation before installing. Commit dependency lockfiles.
+
+Build a modular monolith in one repository.
+
+Organize responsibilities into:
+- Customers.
+- Catalog and Pricing.
+- Measurements.
+- Stitching Orders.
+- Billing.
+- Dashboard and Reporting.
+- Configuration.
+
+Use thin controllers, validated requests, policies, focused domain actions/services and database transactions.
+
+Implement important rules in backend services shared by every entry point. Do not rely on disabled frontend buttons for enforcement.
+
+Use:
+- Foreign keys and appropriate unique/check constraints.
+- Row locking for financial and workflow mutations.
+- Optimistic version checks for stale forms.
+- Idempotency keys for repeatable financial requests.
+- Explicit response serialization.
+- Pagination, eager loading and indexed queries.
+
+Avoid unnecessary microservices, duplicate REST APIs, generic repository layers and premature infrastructure.
+
+==================================================
+3. OWNER AUTHENTICATION AND SECURITY
+==================================================
+
+Provide:
+- Login and logout.
+- Secure owner provisioning without default production passwords.
+- Password change and a documented recovery mechanism.
+- Disabled public registration.
+- Authentication on every business page and endpoint.
+- Policy checks for every resource and download.
+- CSRF protection, rate limiting and secure session settings.
+- Validated and allowlisted input.
+- Private export storage and authorized downloads.
+- Safe file upload restrictions for the business logo.
+- Escaping of user-generated content.
+
+Never commit secrets or production credentials.
+
+Internal costs and private notes must not appear in customer-facing PDFs, exports, serialized data or hidden HTML.
+
+==================================================
+4. DATABASE AND DOMAIN MODEL
+==================================================
+
+Implement the necessary tables and relationships for:
+- Owner user.
+- Business settings.
+- Customers.
+- Service products.
+- Optional customer-specific product prices.
+- Measurement templates, fields and choice options.
+- Stitching orders and order lines.
+- Measurement snapshots and snapshot values.
+- Workflow and audit events.
+- Invoices and invoice lines.
+- Payments and payment allocations.
+- Credit notes, credit allocations and refunds.
+- Payment methods and cash/bank settlement records.
+- Follow-up activities.
+- Technical idempotency and numbering records.
+
+Use one authoritative financial source of truth. Dashboard and reports must derive from billing records rather than separately maintained “paid” totals.
+
+Use UTC storage for timestamps and the configured business timezone for presentation and calendar boundaries.
+
+Use decimal-safe arithmetic or integer minor units for money. Never use binary floating-point arithmetic for financial calculations.
+
+Document currency precision and rounding.
+
+==================================================
+5. CUSTOMER MANAGEMENT
+==================================================
+
+Customer business fields:
+- Name.
+- Phone.
+- Optional separate WhatsApp number.
+- Address.
+- Customer notes where specified.
+
+Support:
+- Quick customer creation from the order form.
+- Search by name, original phone, normalized phone and WhatsApp.
+- Country-aware phone normalization.
+- Duplicate suggestions without preventing family members sharing a number.
+- Customer archive instead of deleting referenced history.
+
+Customer profile must show:
+- Customer since.
+- Confirmed order count.
+- Delivered order count.
+- Latest confirmed order.
+- Latest completed order.
+- Days since these events.
+- Net invoiced spending excluding tax and net of credits.
+- Allocated payments and outstanding balance.
+- Order, invoice, payment and measurement history.
+- Follow-up activities.
+- Active orders before contacting an inactive customer.
+
+Classify customers:
+- No completed orders.
+- One-time: exactly one completed order.
+- Returning: more than one completed order.
+
+Retention:
+- Configurable recent-customer window.
+- Inactive for 30, 60 and 90 days.
+- Treat these inactivity groups as overlapping where applicable.
+- Returning rate = returning customers / defined customer population × 100.
+- Display the denominator definition.
+- Handle an empty population safely.
+
+==================================================
+6. PRODUCTS AND PRICING
+==================================================
+
+Products represent stitching services.
+
+Support:
+- Product name/category.
+- Default stitching price.
+- Measurement template.
+- Active/archive state.
+- Optional direct unit cost with a separate “cost known” flag.
+- Optional customer-specific product pricing.
+
+Price selection order:
+1. Applicable enabled customer-specific price.
+2. Product default price.
+3. Explicit owner manual override.
+
+Snapshot the applied price, original offered price and source.
+
+Changing the line price must not change the product default.
+
+Historical orders must not change when a product or price rule is edited.
+
+Prevent duplicate active customer/product pricing rules.
+
+Do not seed invented commercial prices.
+
+==================================================
+7. STITCHING ORDERS
+==================================================
+
+Order information:
+- Unique reference such as ST-00001.
+- Customer.
+- Order date/time.
+- Promised delivery date/time.
+- Original promised delivery date/time.
+- Confirmation timestamp.
+- Workflow state.
+- Actual ready, delivered and cancelled timestamps.
+- Frozen customer contact details.
+- Customer-visible notes.
+- Separate internal notes.
+- Header discount type and value.
+- Derived quantity, pricing, tax and billing totals.
+- Source order reference for repeats/corrections.
+
+Order lines:
+- Product.
+- Snapshotted description/category.
+- Positive integer quantity.
+- Applied unit price and price provenance.
+- Line discount.
+- Tax configuration and frozen tax details.
+- Optional direct cost and cost-known flag.
+- Measurement template.
+- Shared or per-piece measurement mode.
+- Customer-safe garment instructions.
+- Measurement completeness and revision links.
+
+Order states:
+New → Cutting → Stitching → Ready → Delivered
+
+Cancelled is a terminal alternative.
+
+Draft/unconfirmed status must be distinguishable through confirmation state; a newly confirmed order may remain in New.
+
+Required workflow:
+Create/select customer
+→ Add garment lines
+→ Enter/load measurements
+→ Set delivery date/time
+→ Confirm
+→ Create/post invoice
+→ Record advance if applicable
+→ Progress production
+→ Ready
+→ Collect outstanding payment
+→ Deliver.
+
+Validate transitions server-side.
+
+Do not allow arbitrary backward state changes or editing terminal orders.
+
+Record actor, timestamp, action and relevant old/new values in audit history.
+
+==================================================
+8. MEASUREMENT TEMPLATES
+==================================================
+
+Templates support:
+- Name, code and version.
+- Active/archive.
+- Default unit: inches or centimeters.
+- Ordered sections and fields.
+- Notes.
+
+Template fields support:
+- Stable unique code.
+- Label and section.
+- Display sequence.
+- Type: numeric, text or choice.
+- Unit: inches, centimeters or none.
+- Required flag.
+- Optional minimum/maximum.
+- Help text.
+- Ordered choice options with stable codes and labels.
+
+Provide editable starter templates:
+
+Shalwar Kameez:
+Shirt section:
+Length, Chest, Waist, Hip, Shoulder, Sleeve Length,
+Arm, Armhole, Collar, Cuff, Front, Back, Notes.
+Shalwar section:
+Length, Waist, Seat/Hip, Bottom, Notes.
+
+Shalwar:
+Length, Waist, Hip/Seat, Bottom, Notes.
+
+Kurta:
+Length, Chest, Waist, Hip, Shoulder, Sleeve,
+Arm, Collar, Cuff, Notes.
+
+Pant:
+Length, Waist, Hip, Thigh, Knee, Bottom,
+Inseam, Outseam, Notes.
+
+Shirt:
+Length, Chest, Waist, Hip, Shoulder, Sleeve,
+Collar, Cuff, Armhole, Notes.
+
+Coat:
+Length, Chest, Waist, Hip, Shoulder, Sleeve,
+Armhole, Front, Back, Collar, Cuff, Notes.
+
+Waistcoat:
+Length, Chest, Waist, Shoulder, Front, Back, Notes.
+
+Sherwani:
+Length, Chest, Waist, Hip, Shoulder, Sleeve,
+Arm, Collar, Front, Back, Cuff, Notes.
+
+Custom:
+Owner-configurable fields.
+
+Use distinct stable codes for similarly named fields in different sections.
+
+Notes are text fields. Do not impose arbitrary universal body-size limits.
+
+Seeders must be idempotent and must not overwrite owner-edited templates during upgrades.
+
+==================================================
+9. HISTORICAL MEASUREMENT SAFETY
+==================================================
+
+Measurements must be independent snapshots, not live links to mutable template values.
+
+Each snapshot stores:
+- Order line and piece index.
+- Template identity and copied name/version.
+- Revision and current-revision marker.
+- Capture/freeze timestamps.
+- Source snapshot and superseded revision.
+- Reason for confirmed-order corrections.
+
+Each snapshot value copies:
+- Field code and label.
+- Section and sequence.
+- Type and unit.
+- Required and validation settings.
+- Choice options.
+- Typed value and explicit is_set state.
+
+Zero must be distinguishable from an unset measurement.
+
+Shared mode:
+One snapshot applies to the line quantity.
+
+Per-piece mode:
+Exactly one current complete snapshot for each piece numbered 1..quantity.
+
+“Use same measurements for every piece” must deep-copy values.
+
+“Load previous measurements” must:
+- Restrict to the same customer and compatible garment/template.
+- Use frozen measurements from confirmed, non-cancelled orders.
+- Prefer the latest delivered order.
+- Preview source order, date, revision and units.
+- Copy values independently.
+- Require deliberate review for incompatible fields or units.
+
+Never silently reinterpret inches as centimeters.
+
+Example:
+An old order with Chest = 42 must remain 42 after a new copied order is edited to 44.
+
+Template edits, option changes and archive actions must not alter historical printouts.
+
+Changing customer, product, quantity or measurement mode after draft measurements exist requires an explicit reset/reconciliation flow.
+
+After confirmation:
+- Freeze the original measurements.
+- Allow active-order corrections only as new reasoned revisions.
+- Retain previous revisions.
+- Disallow modifications after delivery or cancellation.
+
+==================================================
+10. FINANCIAL CALCULATIONS
+==================================================
+
+Implement a single authoritative backend calculation engine.
+
+For each line:
+Gross = quantity × unit price.
+Apply line percentage or fixed discount.
+A fixed line discount applies to the entire line, not every piece.
+
+Apply header discount after line discounts.
+
+Allocate header discount proportionally across lines using deterministic largest-remainder allocation in currency minor units.
+
+Allocated shares must sum exactly to the header discount.
+
+Validate:
+- Percentages between 0 and 100.
+- No negative prices or discounts.
+- Fixed discounts cannot exceed the relevant base.
+- Fully discounted orders are valid and require no payment.
+
+Examples:
+2 × 1500 = 3000; 10% discount → 2700.
+5000 − 500 fixed discount → 4500.
+5000 − 200 fixed discount → 4800.
+3000 − 200 + 700 = 3500; 10% header discount → 3150.
+
+Implement documented tax behavior for:
+- Tax-excluded pricing.
+- Tax-included pricing.
+- Multiple taxes.
+- Fixed taxes.
+- Ordered/grouped taxes where configured.
+
+Snapshot tax definitions and calculated amounts.
+
+Document the exact discount/tax calculation order and rounding policy.
+
+Frontend previews must match backend results. Never trust submitted totals.
+
+Optional direct-cost reporting:
+- Distinguish unknown cost from known zero.
+- Exclude tax from revenue/margin.
+- Show cost coverage.
+- Return N/A where a reliable margin cannot be calculated.
+- Do not call stitching margin “whole-business net profit.”
+- Do not erase incurred costs when revenue is credited/refunded.
+
+==================================================
+11. COMPLETE BILLING INTEGRATION
+==================================================
+
+Laravel does not provide the previous Odoo accounting implementation. Build a coherent billing subledger explicitly.
+
+Provide:
+- Draft invoices.
+- Posted invoices.
+- Advances.
+- Multiple partial payments.
+- Payment allocations.
+- Credit notes.
+- Refunds.
+- Reversals.
+- Outstanding balances.
+- Printable invoices and receipts.
+- Customer billing history.
+
+Invoice rules:
+- One active primary invoice per order.
+- Transaction-safe unique numbering.
+- Duplicate requests cannot create duplicate invoices.
+- Invoice customer, currency, source lines, quantities,
+  discounts, taxes and totals must match the confirmed order.
+- Posted financial records are immutable.
+- Corrections use credits/reversals and linked correction orders.
+- Never silently rewrite or delete posted transactions.
+
+Payment rules:
+- Store amount, date, method, reference and settlement state.
+- Separate a payment from its invoice allocations.
+- Sum allocation amounts, not the full payment once per invoice.
+- Unallocated money must not falsely mark an order as paid.
+- Ordinary partial payments leave the remaining receivable open.
+- Do not silently write off differences.
+
+Example:
+Invoice 2200.
+Payment 1000 → due 1200.
+Payment 500 → due 700.
+Payment 700 → due 0.
+Preserve all three receipts and their allocations.
+
+Concurrency:
+- Use transactions and row locks.
+- Bind idempotency keys to request payloads.
+- Repeating the same request returns its existing result.
+- Reusing a key with a different payload is rejected.
+- Reject stale balances with a clear refresh message.
+- Prevent double-click and simultaneous-tab overpayment.
+
+Credits and refunds:
+- Credit against original invoice quantities, prices and taxes.
+- Cumulative credits cannot exceed the original eligible amount/quantity.
+- Apply credit against unpaid receivables before calculating refundable credit.
+- Refund only a valid remaining refundable amount.
+- Preserve credit allocations, refund records and reversal history.
+- Prevent duplicate refunds.
+
+Show separately:
+- Invoiced amount.
+- Allocated cash/payment amount.
+- Credit/noncash settlement.
+- Remaining receivable.
+- Unapplied customer credit.
+- Refund obligation.
+- Payment settlement state.
+
+Do not present settlement by credit as cash collected.
+
+Support cash and manually recorded bank payments. Distinguish pending bank settlement from settled funds.
+
+Do not pretend to charge a bank/card or integrate a gateway without an actual authorized provider integration.
+
+Cancellation:
+Cancelling production does not erase the invoice, payment or debt.
+Show a billing exception requiring a deliberate credit/refund decision.
+
+Store effective financial dates and recorded timestamps.
+Historical reports must reconstruct the requested cutoff rather than use today's residual balances.
+
+==================================================
+12. DELIVERY AND LATE ORDERS
+==================================================
+
+Freeze the original promised delivery timestamp on confirmation.
+
+Rescheduling an active confirmed order:
+- Requires a reason.
+- Records old/new delivery values.
+- Preserves the original promise.
+- Updates relevant reminders.
+
+An order is currently late only when:
+- Confirmed.
+- Active and not delivered/cancelled.
+- Promised delivery timestamp is strictly before now.
+
+Ready orders can still be late.
+Equality with the current timestamp is not late.
+
+Calculate lateness dynamically; do not depend on a stale stored boolean.
+
+Delivery requires:
+- Ready state.
+- Complete measurements.
+- Posted primary invoice.
+- Zero outstanding balance by default.
+
+Optional configuration:
+Deliver on credit with explicit owner reason.
+The debt must remain visible after delivery.
+
+Stamp actual delivery time on the server.
+
+Record delivered-late performance against both:
+- Original promised date/time.
+- Latest promised date/time.
+
+Do not implement partial delivery unless separately authorized.
+
+==================================================
+13. REPEAT ORDERS AND FOLLOW-UP
+==================================================
+
+Repeat order:
+- Creates a new unique reference.
+- Uses the current order timestamp.
+- Starts unconfirmed.
+- Deep-copies selected measurements.
+- Lets the owner choose previous or current pricing.
+- Preserves source-order provenance.
+- Clears invoice/payment links, delivery timestamps and workflow events.
+
+Never reset a completed order to reuse it.
+
+Follow-up:
+- Owner activity with due date, note and completion.
+- Customer inactivity filters.
+- Display active orders before follow-up.
+- Optional scheduled reminders must be deduplicated.
+
+WhatsApp:
+- Normalize the recipient number.
+- Generate a URL-encoded message preview/open action.
+- Use configurable templates.
+- Do not automatically send messages.
+- Do not claim a message was sent merely because WhatsApp opened.
+
+==================================================
+14. FRONTEND AND NAVIGATION
+==================================================
+
+Build a polished, responsive owner interface with real backend data.
+
+Navigation:
+
+Dashboard
+
+Customers:
+- Customers.
+- Customer History.
+- Follow-Up.
+
+Stitching:
+- All Orders.
+- New Order.
+- New.
+- Cutting.
+- Stitching.
+- Ready.
+- Delivered.
+- Late.
+- Cancelled filter/view.
+- Measurements.
+
+Billing:
+- Invoices.
+- Payments.
+- Outstanding.
+- Credits and Refunds.
+
+Reports:
+- Stitching.
+- Item.
+- Customer.
+- Payment.
+- Discount.
+- Delivery.
+- Profit.
+- Daily/Weekly/Monthly.
+
+Configuration:
+- Business identity/logo.
+- Currency, timezone and country.
+- Products and prices.
+- Optional customer-specific prices.
+- Measurement templates.
+- Discount settings.
+- Taxes.
+- Payment methods.
+- Credit-delivery setting.
+- Optional cost reporting.
+- Retention/follow-up settings.
+- WhatsApp templates.
+- Invoice footer.
+
+Order screen:
+- Reference, customer and workflow header.
+- Contact and delivery information.
+- Editable garment grid.
+- Measurement completeness per line/piece.
+- Measurement editor with clear sections.
+- Live totals preview.
+- Invoice/payment/customer/measurement shortcuts.
+- Billing history.
+- Delivery and audit timeline.
+- Clearly separated internal notes.
+- Print, repeat and cancellation actions.
+
+Every visible button must have a working flow with validation,
+loading, success, empty and error states.
+
+Preserve filters in URLs. Warn before losing unsaved changes.
+Use accessible confirmation dialogs for irreversible business actions.
+
+==================================================
+15. VISUAL DESIGN
+==================================================
+
+Use this palette:
+- Navigation/ink: #123E4A
+- Primary: #0E7490
+- New/info: #2563EB
+- Cutting: #A16207
+- Stitching: #0F766E
+- Ready: #15803D
+- Delivered: #1D4ED8
+- Late: #B45309
+- Cancelled: #64748B
+- Background: #F3F7F9
+- Cards: #FFFFFF
+- Borders: #D9E5E9
+- Secondary text: #48626B
+
+Use:
+- Clear typography.
+- Consistent spacing.
+- Rounded cards.
+- Readable financial summaries.
+- Status badges containing text as well as color.
+- Keyboard navigation and visible focus.
+- Accessible contrast.
+- Reduced-motion support.
+- Mobile-friendly forms and delivery cards.
+- Charts with useful labels and accessible summaries.
+
+Avoid decorative clutter and excessive animation.
+
+==================================================
+16. DASHBOARD
+==================================================
+
+Use actual aggregated database queries.
+
+Include:
+- Business/title header.
+- New Order action.
+- Global search.
+- Late orders.
+- Orders created today.
+- Orders delivered today.
+- Workflow-stage counts.
+- Today/week/month selectors.
+- Net posted invoice revenue after credits, excluding tax.
+- Discounts.
+- Net allocated receipts/refunds.
+- Outstanding NOW.
+- Separate unbilled amounts.
+- Optional margin with cost coverage.
+- Revenue trend.
+- Stage distribution.
+- Retention and follow-up.
+- Today/Tomorrow/Late delivery tabs.
+
+Delivery rows:
+Order, customer, phone, garment summary, quantity,
+delivery time, stage, amount due and lateness.
+
+Provide meaningful drilldowns whose filters exactly match the card metric.
+
+Use business-timezone boundaries, Monday week start and calendar months.
+
+Show last refresh time, loading, empty, error and retry states.
+Refresh while visible at a configurable interval, default 60 seconds.
+
+Never label current outstanding as historical period outstanding.
+
+==================================================
+17. REPORTS, EXPORTS AND PRINTING
+==================================================
+
+Provide:
+- Order report: one row per order.
+- Item report: one row per garment line.
+- Payment report: one row per allocation.
+- Customer history.
+- Discounts.
+- Delivery performance.
+- Outstanding.
+- Credits/refunds.
+- Optional direct-cost margin.
+- Daily, weekly and monthly summaries.
+
+Prevent duplicate order totals when joining lines or payments.
+Calculate grouped margin from grouped amounts, not summed percentages.
+
+Filters:
+Customer, product, workflow state, billing/payment status,
+order date, invoice/payment date and promised/actual delivery date.
+
+Provide authorized CSV/XLSX export.
+Prevent spreadsheet formula injection.
+Queue large exports and keep downloads private.
+
+PDFs:
+- Order acknowledgement, clearly distinguished from tax invoice.
+- Customer invoice.
+- Payment receipt.
+- Measurement sheet using frozen snapshots.
+- Customer card/history with explicitly selected scope.
+- Owner internal reports.
+
+Customer documents must exclude internal notes and costs.
+Use the configured business logo, currency and timezone.
+
+Render and inspect PDFs for page breaks, long names,
+multiple garment lines and large measurement sections.
+
+==================================================
+18. AUDITABILITY AND DATA RETENTION
+==================================================
+
+Audit:
+- Confirmation.
+- Stage changes.
+- Rescheduling.
+- Measurement revisions.
+- Invoice posting.
+- Payment/allocation creation and reversal.
+- Credits/refunds.
+- Delivery and cancellation.
+
+Do not expose unrestricted audit-edit endpoints.
+
+Archive referenced customers/products/templates instead of deleting history.
+
+Preserve frozen commercial and measurement data across configuration changes and upgrades.
+
+Protect customer data in logs and export paths.
+Avoid logging secrets or full sensitive request payloads.
+
+==================================================
+19. REQUIRED VERIFICATION
+==================================================
+
+Write and run meaningful tests covering:
+
+Customers:
+Creation, lookup, duplicate-phone suggestions, archive,
+history, retention and follow-up.
+
+Orders:
+Unique references, multiple garments, quantities,
+confirmation, every allowed/forbidden transition,
+repeat-order isolation and direct-request bypass attempts.
+
+Measurements:
+Shared/per-piece coverage, previous-value preview,
+deep-copy isolation, old 42/new 44 example,
+template edits/archive, zero versus missing,
+revision immutability and incomplete-piece blocking.
+
+Pricing:
+Default/customer/manual prices, fixed/percentage discounts,
+all supplied examples, exact header allocation,
+zero totals, invalid inputs and supported tax combinations.
+
+Billing:
+Duplicate invoice concurrency, invoice-source validation,
+1000+500+700 example, split allocations, unallocated funds,
+idempotency replay and payload mismatch, stale requests,
+concurrent overpayment, pending bank settlement,
+partial/cumulative credits, refund limits and reversals.
+
+Delivery:
+Date/time, strict late boundary, ready-but-late,
+rescheduling, original promise preservation,
+business-timezone midnight, cancellation debt,
+paid delivery and reasoned credit delivery.
+
+Reporting:
+Dashboard reconciliation, report row grains,
+credit/refund effects, historical cutoff correctness,
+weighted margins, unknown versus zero costs,
+and 65 returning customers out of 100 = 65%.
+
+Security and UI:
+Unauthenticated access denial, policy enforcement,
+CSRF, mass-assignment attempts, private downloads,
+customer-PDF privacy using sentinel internal values,
+global search, mobile workflows and keyboard usability.
+
+Operations:
+Fresh installation, repeat seed execution,
+upgrade/data preservation and backup restoration.
+
+Use PostgreSQL for database/concurrency verification.
+Do not substitute SQLite and claim equivalent locking tests.
+
+Create separate synthetic performance fixtures:
+10,000 orders, 30,000 order lines and 100,000 measurement values.
+
+Measure dashboard and list performance.
+Target approximately 2 seconds for dashboard and 1 second
+for normal paginated lists on documented test hardware.
+Report actual measurements and conditions; do not invent results.
+
+==================================================
+20. IMPLEMENTATION PROCESS AND DELIVERABLES
+==================================================
+
+First:
+- Inspect attached sources and the existing repository.
+- Produce a requirements checklist.
+- Document important domain decisions.
+- Then immediately implement.
+
+Work through:
+1. Foundation/authentication/configuration.
+2. Customers/catalog/pricing.
+3. Measurements and snapshot revisions.
+4. Orders and workflow.
+5. Billing/payments/credits/refunds.
+6. Dashboard/reports/PDFs.
+7. UI refinement.
+8. Testing and deployment preparation.
+
+Continue through all phases. Do not stop after each phase
+just to ask whether to continue.
+
+Use reasonable documented defaults for routine choices.
+Ask only about a genuine blocker or conflicting business rule.
+
+Deliver:
+- Complete Laravel and React source.
+- Migrations, factories and idempotent seeders.
+- Composer and frontend lockfiles.
+- .env.example without secrets.
+- Automated tests.
+- Requirement-to-code/test coverage matrix.
+- Database relationship documentation.
+- Billing and rounding documentation.
+- Installation and configuration guide.
+- Queue/scheduler instructions.
+- Production web-server and worker configuration examples.
+- Backup/restore and upgrade instructions.
+- Test results and known limitations.
+- Source ZIP excluding secrets, vendor and node_modules.
+
+Verify:
+- Clean dependency installation.
+- Fresh migrations and seeders.
+- Backend tests.
+- Frontend type checking and linting.
+- Production asset build.
+- Critical browser workflows.
+- PDF rendering.
+- No broken routes or browser-console errors.
+
+Do not use hardcoded dashboard figures, placeholder financial
+logic, fake successful payments, empty click handlers or TODOs
+for required functionality.
+
+Do not claim “production-ready guaranteed” from static checks.
+State exactly what was tested, what remains unverified and
+what target-environment checks are still necessary.
+
+Final response:
+Provide the source ZIP, setup commands, verified features,
+test evidence and any remaining blockers.
+
+Start implementing now.

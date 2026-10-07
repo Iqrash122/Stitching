@@ -1,0 +1,4 @@
+Official laravel/react-starter-kit
+https://github.com/laravel/react-starter-kit
+Commit: 87cce8705d712629ebddd70ccfbb06592ecbaac2
+This is a development foundation, not the completed stitching application.
