@@ -821,7 +821,27 @@ function MeasurementEditor({
     onDone: () => void;
 }) {
     const values: Record<string, string> = {};
-    s.fields.forEach((f) => (values[f.code] = f.is_set ? String(f.value) : ''));
+    s.fields.forEach((f) => {
+        if (f.is_set) {
+            values[f.code] = String(f.value);
+        } else if (f.type === 'choice') {
+            values[f.code] = 'no';
+        } else {
+            values[f.code] = '';
+        }
+    });
+
+    const handleChoiceChange = (field: Field, val: string) => {
+        const nextValues = { ...form.data.values, [field.code]: val };
+        if (val !== 'no' && val !== '' && field.group) {
+            s.fields.forEach((other) => {
+                if (other.code !== field.code && other.group === field.group) {
+                    nextValues[other.code] = 'no';
+                }
+            });
+        }
+        form.setData('values', nextValues);
+    };
     const form = useForm({
         version: order.version,
         values,
@@ -941,104 +961,116 @@ function MeasurementEditor({
                         {s.fields
                             .filter((f) => f.section === section)
                             .sort((a, b) => a.sequence - b.sequence)
-                            .map((f) => (
-                                <label
-                                    key={f.code}
-                                    className={f.checkbox ? 'check-label' : ''}
-                                >
-                                    <span>
-                                        {f.label}
-                                        {f.required ? ' *' : ''}
-                                        {f.unit !== 'none'
-                                            ? ` (${f.unit})`
-                                            : ''}
-                                    </span>
-                                    {f.checkbox ? (
-                                        <input
-                                            type="checkbox"
-                                            disabled={closed}
-                                            checked={
-                                                form.data.values[f.code] ===
-                                                'yes'
-                                            }
-                                            {...fieldErrorProps(
-                                                form.errors,
-                                                `values.${f.code}`,
-                                            )}
-                                            onChange={(e) =>
-                                                form.setData('values', {
-                                                    ...form.data.values,
-                                                    [f.code]: e.target.checked
-                                                        ? 'yes'
-                                                        : 'no',
-                                                })
-                                            }
+                            .map((f) => {
+                                if (f.depends_on) {
+                                    const parentVal = form.data.values[f.depends_on];
+                                    const isParentActive = parentVal && parentVal !== 'no' && parentVal !== '';
+                                    if (!isParentActive) {
+                                        return null;
+                                    }
+                                }
+
+                                return (
+                                    <label
+                                        key={f.code}
+                                        className={f.checkbox ? 'check-label' : ''}
+                                    >
+                                        <span>
+                                            {f.label}
+                                            {f.required ? ' *' : ''}
+                                            {f.unit !== 'none'
+                                                ? ` (${f.unit === 'inches' ? 'انچ' : f.unit})`
+                                                : ''}
+                                        </span>
+                                        {f.checkbox ? (
+                                            <input
+                                                type="checkbox"
+                                                disabled={closed}
+                                                checked={
+                                                    form.data.values[f.code] ===
+                                                    'yes'
+                                                }
+                                                {...fieldErrorProps(
+                                                    form.errors,
+                                                    `values.${f.code}`,
+                                                )}
+                                                onChange={(e) =>
+                                                    handleChoiceChange(
+                                                        f,
+                                                        e.target.checked
+                                                            ? 'yes'
+                                                            : 'no',
+                                                    )
+                                                }
+                                            />
+                                        ) : f.type === 'choice' ? (
+                                            <select
+                                                disabled={closed}
+                                                value={form.data.values[f.code] || 'no'}
+                                                {...fieldErrorProps(
+                                                    form.errors,
+                                                    `values.${f.code}`,
+                                                )}
+                                                onChange={(e) =>
+                                                    handleChoiceChange(
+                                                        f,
+                                                        e.target.value,
+                                                    )
+                                                }
+                                            >
+                                                {f.options.map((v) => (
+                                                    <option
+                                                        key={v.code}
+                                                        value={v.code}
+                                                    >
+                                                        {v.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        ) : f.type === 'text' ? (
+                                            <textarea
+                                                disabled={closed}
+                                                value={form.data.values[f.code] || ''}
+                                                rows={f.depends_on ? 2 : 4}
+                                                placeholder={f.label}
+                                                {...fieldErrorProps(
+                                                    form.errors,
+                                                    `values.${f.code}`,
+                                                )}
+                                                onChange={(e) =>
+                                                    form.setData('values', {
+                                                        ...form.data.values,
+                                                        [f.code]: e.target.value,
+                                                    })
+                                                }
+                                            />
+                                        ) : (
+                                            <input
+                                                disabled={closed}
+                                                type="number"
+                                                step="any"
+                                                placeholder="انچ میں عدد"
+                                                value={form.data.values[f.code] || ''}
+                                                {...fieldErrorProps(
+                                                    form.errors,
+                                                    `values.${f.code}`,
+                                                )}
+                                                onChange={(e) =>
+                                                    form.setData('values', {
+                                                        ...form.data.values,
+                                                        [f.code]: e.target.value,
+                                                    })
+                                                }
+                                            />
+                                        )}
+                                        <small className="muted">{f.help}</small>
+                                        <FieldError
+                                            errors={form.errors}
+                                            name={`values.${f.code}`}
                                         />
-                                    ) : f.type === 'choice' ? (
-                                        <select
-                                            disabled={closed}
-                                            value={form.data.values[f.code]}
-                                            {...fieldErrorProps(
-                                                form.errors,
-                                                `values.${f.code}`,
-                                            )}
-                                            onChange={(e) =>
-                                                form.setData('values', {
-                                                    ...form.data.values,
-                                                    [f.code]: e.target.value,
-                                                })
-                                            }
-                                        >
-                                            <option value="">Not set</option>
-                                            {f.options.map((v) => (
-                                                <option
-                                                    key={v.code}
-                                                    value={v.code}
-                                                >
-                                                    {v.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    ) : f.type === 'text' ? (
-                                        <textarea
-                                            disabled={closed}
-                                            value={form.data.values[f.code]}
-                                            {...fieldErrorProps(
-                                                form.errors,
-                                                `values.${f.code}`,
-                                            )}
-                                            onChange={(e) =>
-                                                form.setData('values', {
-                                                    ...form.data.values,
-                                                    [f.code]: e.target.value,
-                                                })
-                                            }
-                                        />
-                                    ) : (
-                                        <input
-                                            disabled={closed}
-                                            type="number"
-                                            step="any"
-                                            value={form.data.values[f.code]}
-                                            {...fieldErrorProps(
-                                                form.errors,
-                                                `values.${f.code}`,
-                                            )}
-                                            onChange={(e) =>
-                                                form.setData('values', {
-                                                    ...form.data.values,
-                                                    [f.code]: e.target.value,
-                                                })
-                                            }
-                                        />
-                                    )}
-                                    <small className="muted">{f.help}</small>
-                                    <FieldError
-                                        errors={form.errors}
-                                        name={`values.${f.code}`}
-                                    />
-                                </label>
-                            ))}
+                                    </label>
+                                );
+                            })}
                     </div>
                 ))}
             </div>

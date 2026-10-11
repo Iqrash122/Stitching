@@ -11,6 +11,8 @@ export interface Field {
     help: string;
     options: { code: string; label: string }[];
     checkbox?: boolean;
+    group?: string | null;
+    depends_on?: string | null;
     value?: string | null;
     is_set?: boolean;
 }

@@ -42,9 +42,32 @@ final class Documents
                 if (in_array($type, ['measurements', 'tailor'], true)) {
                     foreach ($l->snapshots->where('current', true) as $s) {
                         $values = [];
+                        $fieldMap = array_column($s->fields, null, 'code');
                         foreach ($s->fields as $f) {
-                            $values[] = ['Section' => $f['section'], 'Measurement' => $f['label'], 'Value' => $f['is_set'] ? ($f['type'] === 'choice' ? (array_column($f['options'], 'label', 'code')[$f['value']] ?? $f['value']) : $f['value']) : 'Not set', 'Unit' => $f['unit']];
-                        }$sections[] = ['title' => $l->description.' · '.($s->piece ? 'Piece '.$s->piece : 'Shared measurements').' · Revision '.$s->revision.($s->frozen_at ? ' · Frozen' : ' · DRAFT'), 'rows' => $values];
+                            if (! ($f['is_set'] ?? false)) {
+                                continue;
+                            }
+                            $val = $f['value'];
+                            if ($f['type'] === 'choice') {
+                                if ($val === 'no' || $val === false || $val === '') {
+                                    continue;
+                                }
+                                $val = array_column($f['options'] ?? [], 'label', 'code')[$val] ?? $val;
+                            }
+                            if (! empty($f['depends_on'])) {
+                                $parent = $fieldMap[$f['depends_on']] ?? null;
+                                $parentVal = $parent['value'] ?? null;
+                                if (! $parent || empty($parent['is_set']) || $parentVal === 'no' || $parentVal === '') {
+                                    continue;
+                                }
+                            }
+                            if ($f['type'] === 'text' && trim((string) $val) === '') {
+                                continue;
+                            }
+                            $unitLabel = ($f['unit'] ?? 'none') === 'none' ? '' : ($f['unit'] === 'inches' ? 'انچ' : $f['unit']);
+                            $values[] = ['Section' => $f['section'], 'Measurement' => $f['label'], 'Value' => (string) $val, 'Unit' => $unitLabel];
+                        }
+                        $sections[] = ['title' => $l->description.' · '.($s->piece ? 'Piece '.$s->piece : 'Shared measurements').' · Revision '.$s->revision.($s->frozen_at ? ' · Frozen' : ' · DRAFT'), 'rows' => $values];
                     }
                 }
             }
