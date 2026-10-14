@@ -6,6 +6,8 @@ use App\Models\Allocation;
 use App\Models\BusinessSetting;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\MeasurementSnapshot;
+use App\Models\OrderLine;
 use App\Models\Payment;
 use App\Models\StitchingOrder;
 use Carbon\CarbonInterface;
@@ -26,61 +28,29 @@ final class Documents
         $contact = [];
         $notes = '';
         if (in_array($type, ['order', 'measurements', 'tailor'])) {
-            $o = StitchingOrder::with('lines.snapshots')->findOrFail($id);
-            $title = match ($type) {
-                'order' => 'Order acknowledgement — not a tax invoice',
-                'measurements' => 'Measurement sheet',
-                'tailor' => 'Tailor job sheet',
-            };
+            $o = StitchingOrder::with(['lines.snapshots', 'lines.template', 'lines.product', 'customer'])->findOrFail($id);
             $ref = $o->reference;
-            $contact = $o->contact;
-            $notes = $o->notes ?? '';
+            $pages = [];
+
             foreach ($o->lines as $l) {
-                $rows[] = $type === 'tailor'
-                    ? ['Garment / stitching item' => $l->description, 'Quantity' => $l->quantity, 'Measurement mode' => $l->measurement_mode === 'per_piece' ? 'Separate per piece' : 'Shared', 'Stitching instructions' => $l->instructions ?: '—']
-                    : ['Garment' => $l->description, 'Quantity' => $l->quantity, 'Instructions' => $l->instructions];
-                if (in_array($type, ['measurements', 'tailor'], true)) {
-                    foreach ($l->snapshots->where('current', true) as $s) {
-                        $values = [];
-                        $fieldMap = array_column($s->fields, null, 'code');
-                        foreach ($s->fields as $f) {
-                            if (! ($f['is_set'] ?? false)) {
-                                continue;
-                            }
-                            $val = $f['value'];
-                            if ($f['type'] === 'choice') {
-                                if ($val === 'no' || $val === false || $val === '') {
-                                    continue;
-                                }
-                                $val = array_column($f['options'] ?? [], 'label', 'code')[$val] ?? $val;
-                            }
-                            if (! empty($f['depends_on'])) {
-                                $parent = $fieldMap[$f['depends_on']] ?? null;
-                                $parentVal = $parent['value'] ?? null;
-                                if (! $parent || empty($parent['is_set']) || $parentVal === 'no' || $parentVal === '') {
-                                    continue;
-                                }
-                            }
-                            if ($f['type'] === 'text' && trim((string) $val) === '') {
-                                continue;
-                            }
-                            $unitLabel = ($f['unit'] ?? 'none') === 'none' ? '' : ($f['unit'] === 'inches' ? 'انچ' : $f['unit']);
-                            $values[] = ['Section' => $f['section'], 'Measurement' => $f['label'], 'Value' => (string) $val, 'Unit' => $unitLabel];
-                        }
-                        $sections[] = ['title' => $l->description.' · '.($s->piece ? 'Piece '.$s->piece : 'Shared measurements').' · Revision '.$s->revision.($s->frozen_at ? ' · Frozen' : ' · DRAFT'), 'rows' => $values];
+                $snapshots = $l->snapshots->where('current', true);
+                if ($snapshots->isEmpty()) {
+                    $fields = $l->template?->fields ?? ($l->product?->template?->fields ?? []);
+                    $pages[] = self::buildOrderSlipPage($o, $l, null, $fields, $type, $settings);
+                } else {
+                    foreach ($snapshots as $s) {
+                        $pages[] = self::buildOrderSlipPage($o, $l, $s, $s->fields, $type, $settings);
                     }
                 }
             }
-            $summary = [
-                'Promised delivery' => $o->promised_at->timezone($settings->timezone)->format('d M Y h:i A'),
-                'Status' => $o->confirmed_at ? $o->stage : 'Unconfirmed draft',
-            ];
-            if ($type === 'order') {
-                $summary['Order total'] = self::money($o->totals['total'], $settings->currency);
+
+            if (empty($pages)) {
+                $pages[] = self::buildOrderSlipPage($o, new OrderLine(['description' => 'Custom order', 'quantity' => 1]), null, [], $type, $settings);
             }
-            if ($type === 'tailor') {
-                $summary['Department'] = 'Tailor / Production';
-            }
+
+            $html = view('studio.order-slip', compact('pages', 'settings'))->render();
+
+            return self::renderPdf($html, $ref.'-'.$type.'.pdf', 'P', ['left' => 6, 'right' => 6, 'top' => 6, 'bottom' => 6]);
         } elseif ($type === 'invoice') {
             $i = Invoice::findOrFail($id);
             $title = $i->state === 'posted' ? 'Invoice' : 'Draft invoice';
@@ -181,7 +151,124 @@ final class Documents
         return self::renderPdf($html, strtolower($type).'-report.pdf', 'L');
     }
 
-    private static function renderPdf(string $html, string $filename, string $orientation = 'P'): Response
+    /**
+     * @return array{0: int, 1: string}
+     */
+    private static function parseFieldNumAndName(string $label, int $defaultSeq): array
+    {
+        $easternArabic = ['۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4', '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9'];
+        $normalized = strtr($label, $easternArabic);
+
+        if (preg_match('/^\s*(\d+)\s*[۔\.\-:]\s*(.*)$/u', $normalized, $matches)) {
+            return [(int) $matches[1], trim($matches[2])];
+        }
+
+        return [$defaultSeq, trim($label)];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $fields
+     * @return array<string, mixed>
+     */
+    private static function buildOrderSlipPage(
+        StitchingOrder $o,
+        OrderLine $l,
+        ?MeasurementSnapshot $s,
+        array $fields,
+        string $type,
+        BusinessSetting $settings
+    ): array {
+        $col1 = [];
+        $col2 = [];
+        $notesBadge = '';
+        $extraNotes = [];
+
+        $seq = 1;
+        foreach ($fields as $f) {
+            if (! empty($f['depends_on'])) {
+                continue;
+            }
+            [$num, $cleanName] = self::parseFieldNumAndName($f['label'] ?? '', $seq++);
+
+            if (($f['type'] ?? '') === 'numeric') {
+                $val = ($f['is_set'] ?? false) || (isset($f['value']) && $f['value'] !== '') ? $f['value'] : '';
+                $unit = ($f['unit'] ?? '') === 'inches' ? 'انچ' : (($f['unit'] ?? '') === 'none' ? '' : ($f['unit'] ?? ''));
+                $col1[] = [
+                    'num' => $num,
+                    'name' => $cleanName,
+                    'val' => (string) $val,
+                    'unit' => $unit,
+                ];
+            } elseif (($f['type'] ?? '') === 'choice') {
+                $dep = collect($fields)->firstWhere('depends_on', $f['code'] ?? '');
+                $val = ($f['is_set'] ?? false) || (isset($f['value']) && $f['value'] !== '') ? $f['value'] : '';
+                $depVal = $dep && (($dep['is_set'] ?? false) || ! empty($dep['value'])) ? $dep['value'] : '';
+                $col2[] = [
+                    'num' => $num,
+                    'name' => $cleanName,
+                    'choice' => (string) $val,
+                    'note' => (string) $depVal,
+                ];
+            } elseif (($f['type'] ?? '') === 'text') {
+                $badgeClean = preg_replace('/\s*\(.*$/u', '', $cleanName);
+                if (! $notesBadge) {
+                    $notesBadge = $num.'. '.$badgeClean;
+                }
+                if (! empty($f['value'])) {
+                    $extraNotes[] = $f['value'];
+                }
+            }
+        }
+
+        $min1 = count($col1) ? min(array_column($col1, 'num')) : 1;
+        $max1 = count($col1) ? max(array_column($col1, 'num')) : count($col1);
+        $min2 = count($col2) ? min(array_column($col2, 'num')) : (count($col1) + 1);
+        $max2 = count($col2) ? max(array_column($col2, 'num')) : (count($col1) + count($col2));
+
+        $allNotes = array_filter([
+            $l->instructions ?: null,
+            ...$extraNotes,
+            $o->notes ?: null,
+        ]);
+
+        $serviceTitle = $l->product?->name ?? $l->description;
+        if (preg_match('/^([^\(]+)\s*\([^\)]+\)$/u', $serviceTitle, $mTitle)) {
+            $serviceTitle = trim($mTitle[1]);
+        }
+
+        $qtyText = (string) $l->quantity;
+        if ($s && $s->piece) {
+            $qtyText .= ' (Piece '.$s->piece.')';
+        }
+
+        return [
+            'order_reference' => $o->reference,
+            'service_name' => $serviceTitle,
+            'quantity' => $qtyText,
+            'customer_name' => $o->contact['name'] ?? $o->customer?->name ?? '',
+            'customer_phone' => $o->contact['phone'] ?? $o->customer?->phone ?? '',
+            'date' => $o->ordered_at ? $o->ordered_at->timezone($settings->timezone)->format('d M Y') : now()->timezone($settings->timezone)->format('d M Y'),
+            'col1_title' => "حصہ اول — بنیادی ناپ ({$min1} تا {$max1})",
+            'col1_rows' => $col1,
+            'col2_title' => "حصہ دوم — اسٹائل اور ڈیزائن ({$min2} تا {$max2})",
+            'col2_rows' => $col2,
+            'notes' => implode("\n", $allNotes),
+            'notes_badge' => $notesBadge ?: '17. اضافی نوٹس',
+            'delivery_date' => $o->promised_at ? $o->promised_at->timezone($settings->timezone)->format('d / m / Y') : '-- / -- / ----',
+            'status' => $o->confirmed_at ? $o->stage : 'Unconfirmed draft',
+            'department' => match ($type) {
+                'tailor' => 'Tailor / Production',
+                'measurements' => 'Cutting / Master',
+                default => 'Tailor / Production',
+            },
+            'printed_at' => now()->timezone($settings->timezone)->format('d M Y h:i A').' • '.$settings->timezone,
+        ];
+    }
+
+    /**
+     * @param  array<string, int>  $margins
+     */
+    private static function renderPdf(string $html, string $filename, string $orientation = 'P', array $margins = []): Response
     {
         $tempDir = storage_path('app/mpdf');
         if (! is_dir($tempDir)) {
@@ -191,10 +278,10 @@ final class Documents
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
             'format' => $orientation === 'L' ? 'A4-L' : 'A4',
-            'margin_left' => 10,
-            'margin_right' => 10,
-            'margin_top' => 10,
-            'margin_bottom' => 12,
+            'margin_left' => $margins['left'] ?? 10,
+            'margin_right' => $margins['right'] ?? 10,
+            'margin_top' => $margins['top'] ?? 10,
+            'margin_bottom' => $margins['bottom'] ?? 12,
             'tempDir' => $tempDir,
             'autoScriptToLang' => true,
             'autoLangToFont' => true,

@@ -322,6 +322,7 @@ class WorkflowTest extends TestCase
         $response = $this->get('/studio-document/tailor/'.$order->id);
         $response->assertOk();
         $this->assertStringStartsWith('%PDF', $response->getContent());
+        $this->assertSame(2, preg_match_all('/\/Type\s*\/Page[^s]/', $response->getContent()));
     }
 
     public function test_posting_rejects_changed_invoice_lines(): void

@@ -39,4 +39,16 @@ class OrderLine extends Model
     {
         return $this->belongsTo(StitchingOrder::class, 'order_id');
     }
+
+    /** @return BelongsTo<Product, $this> */
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    /** @return BelongsTo<MeasurementTemplate, $this> */
+    public function template(): BelongsTo
+    {
+        return $this->belongsTo(MeasurementTemplate::class, 'template_id');
+    }
 }

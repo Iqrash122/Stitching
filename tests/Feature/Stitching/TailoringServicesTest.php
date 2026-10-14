@@ -2,8 +2,12 @@
 
 namespace Tests\Feature\Stitching;
 
+use App\Domain\Orders;
+use App\Models\Customer;
 use App\Models\MeasurementTemplate;
 use App\Models\Product;
+use App\Models\User;
+use Database\Seeders\StudioSeeder;
 use Database\Seeders\TailoringServicesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -15,6 +19,7 @@ final class TailoringServicesTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed(StudioSeeder::class);
         $this->seed(TailoringServicesSeeder::class);
     }
 
@@ -78,7 +83,7 @@ final class TailoringServicesTest extends TestCase
         $fields = $template->fields;
 
         for ($i = 1; $i <= 6; $i++) {
-            $f = collect($fields)->first(fn ($item) => str_contains($item['label'], match($i) {
+            $f = collect($fields)->first(fn ($item) => str_contains($item['label'], match ($i) {
                 1 => '۱۔ ', 2 => '۲۔ ', 3 => '۳۔ ', 4 => '۴۔ ', 5 => '۵۔ ', 6 => '۶۔ '
             }));
             $this->assertNotNull($f, "Waistcoat point {$i} must exist");
@@ -96,7 +101,7 @@ final class TailoringServicesTest extends TestCase
         $fields = $template->fields;
 
         for ($i = 1; $i <= 6; $i++) {
-            $f = collect($fields)->first(fn ($item) => str_contains($item['label'], match($i) {
+            $f = collect($fields)->first(fn ($item) => str_contains($item['label'], match ($i) {
                 1 => '۱۔ ', 2 => '۲۔ ', 3 => '۳۔ ', 4 => '۴۔ ', 5 => '۵۔ ', 6 => '۶۔ '
             }));
             $this->assertNotNull($f, "Pant point {$i} must exist");
@@ -114,7 +119,7 @@ final class TailoringServicesTest extends TestCase
         $fields = $template->fields;
 
         for ($i = 1; $i <= 9; $i++) {
-            $f = collect($fields)->first(fn ($item) => str_contains($item['label'], match($i) {
+            $f = collect($fields)->first(fn ($item) => str_contains($item['label'], match ($i) {
                 1 => '۱۔ ', 2 => '۲۔ ', 3 => '۳۔ ', 4 => '۴۔ ', 5 => '۵۔ ', 6 => '۶۔ ', 7 => '۷۔ ', 8 => '۸۔ ', 9 => '۹۔ '
             }));
             $this->assertNotNull($f, "Coat/Sherwani point {$i} must exist");
@@ -122,13 +127,50 @@ final class TailoringServicesTest extends TestCase
         }
 
         for ($i = 10; $i <= 26; $i++) {
-            $f = collect($fields)->first(fn ($item) => str_contains($item['label'], match($i) {
+            $f = collect($fields)->first(fn ($item) => str_contains($item['label'], match ($i) {
                 10 => '۱۰۔ ', 11 => '۱۱۔ ', 12 => '۱۲۔ ', 13 => '۱۳۔ ', 14 => '۱۴۔ ', 15 => '۱۵۔ ', 16 => '۱۶۔ ',
                 17 => '۱۷۔ ', 18 => '۱۸۔ ', 19 => '۱۹۔ ', 20 => '۲۰۔ ', 21 => '۲۱۔ ', 22 => '۲۲۔ ', 23 => '۲۳۔ ',
                 24 => '۲۴۔ ', 25 => '۲۵۔ ', 26 => '۲۶۔ '
             }));
             $this->assertNotNull($f, "Coat/Sherwani style {$i} must exist");
             $this->assertSame('choice', $f['type']);
+        }
+    }
+
+    public function test_multiple_services_render_one_page_per_service_in_orders_pdf(): void
+    {
+        $u = User::factory()->create(['is_owner' => true]);
+        $this->actingAs($u);
+
+        $customer = Customer::create([
+            'name' => 'محمد رضوان',
+            'phone' => '03001234567',
+            'normalized_phone' => '+923001234567',
+            'active' => true,
+        ]);
+
+        $pant = Product::where('name', 'پینٹ')->firstOrFail();
+        $sk = Product::where('name', 'شلوار قمیض')->firstOrFail();
+        $wc = Product::where('name', 'ویسٹ کوٹ')->firstOrFail();
+
+        $order = Orders::create([
+            'customer_id' => $customer->id,
+            'promised_at' => now()->addDays(5)->toIso8601String(),
+            'discount_type' => 'fixed',
+            'discount_value' => '0',
+            'lines' => [
+                ['product_id' => $pant->id, 'quantity' => 1, 'discount_type' => 'fixed', 'discount_value' => '0', 'measurement_mode' => 'shared'],
+                ['product_id' => $sk->id, 'quantity' => 1, 'discount_type' => 'fixed', 'discount_value' => '0', 'measurement_mode' => 'shared'],
+                ['product_id' => $wc->id, 'quantity' => 1, 'discount_type' => 'fixed', 'discount_value' => '0', 'measurement_mode' => 'shared'],
+            ],
+        ]);
+
+        foreach (['order', 'tailor', 'measurements'] as $docType) {
+            $response = $this->get("/studio-document/{$docType}/{$order->id}");
+            $response->assertOk();
+            $this->assertStringStartsWith('%PDF', $response->getContent());
+            $pageCount = preg_match_all('/\/Type\s*\/Page[^s]/', $response->getContent());
+            $this->assertSame(3, $pageCount, "PDF for {$docType} must have exactly 3 pages for 3 services");
         }
     }
 }
