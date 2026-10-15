@@ -207,6 +207,10 @@ final class Documents
                     'num' => $num,
                     'name' => $cleanName,
                     'choice' => (string) $val,
+                    'options' => array_map(fn (array $option): array => [
+                        'label' => (string) $option['label'],
+                        'selected' => $val !== '' && (string) $option['code'] === (string) $val,
+                    ], $f['options'] ?? []),
                     'note' => (string) $depVal,
                 ];
             } elseif (($f['type'] ?? '') === 'text') {

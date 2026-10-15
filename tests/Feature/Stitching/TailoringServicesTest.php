@@ -10,6 +10,7 @@ use App\Models\User;
 use Database\Seeders\StudioSeeder;
 use Database\Seeders\TailoringServicesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\View;
 use Tests\TestCase;
 
 final class TailoringServicesTest extends TestCase
@@ -172,5 +173,46 @@ final class TailoringServicesTest extends TestCase
             $pageCount = preg_match_all('/\/Type\s*\/Page[^s]/', $response->getContent());
             $this->assertSame(3, $pageCount, "PDF for {$docType} must have exactly 3 pages for 3 services");
         }
+    }
+
+    public function test_order_slip_prints_snapshot_choice_options_and_preserves_all_notes(): void
+    {
+        $this->actingAs(User::factory()->create(['is_owner' => true]));
+        $customer = Customer::create(['name' => 'PDF test customer', 'phone' => '03001234567', 'normalized_phone' => '+923001234567', 'active' => true]);
+        $product = Product::where('name', 'شلوار قمیض')->firstOrFail();
+        $notes = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nFinal instruction <keep>";
+        $order = Orders::create([
+            'customer_id' => $customer->id,
+            'promised_at' => now()->addDays(5)->toIso8601String(),
+            'discount_type' => 'fixed', 'discount_value' => '0',
+            'lines' => [['product_id' => $product->id, 'quantity' => 1, 'discount_type' => 'fixed', 'discount_value' => '0', 'measurement_mode' => 'shared', 'instructions' => $notes]],
+        ]);
+        $snapshot = $order->lines()->firstOrFail()->snapshots()->firstOrFail();
+        Orders::saveSnapshot($order->id, $snapshot->id, [
+            'version' => $order->version,
+            'values' => ['sq_17_front_pocket' => '2', 'sq_21_design' => 'no'],
+        ]);
+
+        // Later template edits must not change options frozen into the order.
+        MeasurementTemplate::findOrFail($product->template_id)->update(['fields' => []]);
+        $viewData = [];
+        View::composer('studio.order-slip', function ($view) use (&$viewData): void {
+            $viewData = $view->getData();
+        });
+        $response = $this->get('/studio-document/order/'.$order->id);
+        $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertSame(1, preg_match_all('/\/Type\s*\/Page[^s]/', $response->getContent()));
+
+        $styles = collect($viewData['pages'][0]['col2_rows'])->keyBy('num');
+        $this->assertSame(['نہیں', '1 جیب', '2 جیبیں'], array_column($styles[17]['options'], 'label'));
+        $this->assertSame([false, false, true], array_column($styles[17]['options'], 'selected'));
+        $this->assertSame([true, false], array_column($styles[21]['options'], 'selected'));
+        $this->assertSame([false, false], array_column($styles[22]['options'], 'selected'));
+
+        $html = view('studio.order-slip', $viewData)->render();
+        $this->assertSame(2, substr_count($html, 'alt="Selected"'));
+        $this->assertStringContainsString('data:image/svg+xml;base64,', $html);
+        $this->assertStringNotContainsString('&amp;#967', $html);
+        $this->assertStringContainsString('Final instruction &lt;keep&gt;', $html);
     }
 }
