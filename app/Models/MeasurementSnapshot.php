@@ -7,7 +7,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * @property array<string|int, mixed> $fields
+ * @property array<int, array<string, mixed>> $fields
  * @property bool $current
  * @property-read CarbonImmutable|null $frozen_at
  * @property-write CarbonInterface|string|null $frozen_at

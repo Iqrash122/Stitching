@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * @property array<string|int, mixed> $fields
+ * @property array<int, array<string, mixed>> $fields
  * @property bool $active
  * @property int $revision
  */

@@ -1,6 +1,6 @@
 # Installation and development
 
-Requires PHP 8.4, Composer 2, Node.js 24/npm, and PostgreSQL 17. Docker provides these without host PHP or Node. Network access is needed for dependency/image downloads. Docker startup has not been executed in this environment.
+Requires PHP 8.4.1 or newer, Composer 2, Node.js 24/npm, and PostgreSQL 17. Docker provides these without host PHP or Node. Network access is needed for dependency/image downloads. Docker startup has not been executed in this environment.
 
 ## Docker
 

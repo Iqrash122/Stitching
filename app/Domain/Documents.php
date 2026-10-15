@@ -35,7 +35,7 @@ final class Documents
             foreach ($o->lines as $l) {
                 $snapshots = $l->snapshots->where('current', true);
                 if ($snapshots->isEmpty()) {
-                    $fields = $l->template?->fields ?? ($l->product?->template?->fields ?? []);
+                    $fields = $l->template->fields ?? $l->product->template->fields ?? [];
                     $pages[] = self::buildOrderSlipPage($o, $l, null, $fields, $type, $settings);
                 } else {
                     foreach ($snapshots as $s) {
@@ -235,7 +235,7 @@ final class Documents
             $o->notes ?: null,
         ]);
 
-        $serviceTitle = $l->product?->name ?? $l->description;
+        $serviceTitle = $l->product->name ?? $l->description;
         if (preg_match('/^([^\(]+)\s*\([^\)]+\)$/u', $serviceTitle, $mTitle)) {
             $serviceTitle = trim($mTitle[1]);
         }
@@ -249,8 +249,8 @@ final class Documents
             'order_reference' => $o->reference,
             'service_name' => $serviceTitle,
             'quantity' => $qtyText,
-            'customer_name' => $o->contact['name'] ?? $o->customer?->name ?? '',
-            'customer_phone' => $o->contact['phone'] ?? $o->customer?->phone ?? '',
+            'customer_name' => $o->contact['name'] ?? $o->customer->name ?? '',
+            'customer_phone' => $o->contact['phone'] ?? $o->customer->phone ?? '',
             'date' => $o->ordered_at ? $o->ordered_at->timezone($settings->timezone)->format('d M Y') : now()->timezone($settings->timezone)->format('d M Y'),
             'col1_title' => "حصہ اول — بنیادی ناپ ({$min1} تا {$max1})",
             'col1_rows' => $col1,

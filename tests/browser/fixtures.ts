@@ -12,7 +12,9 @@ export const test = base.extend<{}, { ownerStorageState: OwnerStorageState }>({
             const credentialPath =
                 process.env.STUDIO_TEST_CREDENTIALS ??
                 join(tmpdir(), 'stitching-browser-credentials.json');
-            const credentials = JSON.parse(readFileSync(credentialPath, 'utf8')) as {
+            const credentials = JSON.parse(
+                readFileSync(credentialPath, 'utf8'),
+            ) as {
                 email: string;
                 password: string;
             };
@@ -20,11 +22,16 @@ export const test = base.extend<{}, { ownerStorageState: OwnerStorageState }>({
             let state: OwnerStorageState;
             try {
                 const page = await context.newPage();
-                const baseURL = process.env.STUDIO_TEST_URL ?? 'http://127.0.0.1:8000';
+                const baseURL =
+                    process.env.STUDIO_TEST_URL ?? 'http://127.0.0.1:8000';
                 await page.goto(`${baseURL}/login`);
                 await page.getByLabel('Email address').fill(credentials.email);
-                await page.getByLabel('Password', { exact: true }).fill(credentials.password);
-                await page.getByRole('button', { name: 'Log in', exact: true }).click();
+                await page
+                    .getByLabel('Password', { exact: true })
+                    .fill(credentials.password);
+                await page
+                    .getByRole('button', { name: 'Log in', exact: true })
+                    .click();
                 await expect(page).toHaveURL(/\/studio/);
                 state = await context.storageState();
             } finally {

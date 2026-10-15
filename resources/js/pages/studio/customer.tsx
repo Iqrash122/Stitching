@@ -47,7 +47,8 @@ export default function CustomerPage(p: Props) {
     const c = p.customer;
     const s = p.stats;
     const [wa, setWa] = useState(false);
-    const order = s.active_orders[0]; const template =
+    const order = s.active_orders[0];
+    const template =
         p.settings?.whatsapp_template ??
         'Hello {name}, your order {order} is currently {stage}.';
 

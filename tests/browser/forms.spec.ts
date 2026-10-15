@@ -1,13 +1,20 @@
 import { test, expect } from './fixtures';
 
-test('failed navigation shows a connection error and allows retry', async ({ page }) => {
+test('failed navigation shows a connection error and allows retry', async ({
+    page,
+}) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto('/studio/customers');
     await page.route('**/studio/orders', (route) => route.abort('failed'));
-    const ordersLink = page.getByRole('link', { name: 'Stitching orders', exact: true });
+    const ordersLink = page.getByRole('link', {
+        name: 'Stitching orders',
+        exact: true,
+    });
     await ordersLink.click();
-    await expect(page.getByRole('alert')).toContainText('Check your connection');
+    await expect(page.getByRole('alert')).toContainText(
+        'Check your connection',
+    );
     await expect(page).toHaveURL(/\/studio\/customers$/);
     await page.unroute('**/studio/orders');
     await ordersLink.click();
@@ -137,9 +144,17 @@ test('logo upload keeps the optimistic version in sync for repeat uploads', asyn
     await page.goto('/studio/configuration');
 
     const logoInput = page.getByLabel('Upload business logo');
-    const uploadButton = page.getByRole('button', { name: 'Upload PNG / JPEG' });
-    const pngA = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAF', 'base64');
-    const pngB = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAcAAAAF', 'base64');
+    const uploadButton = page.getByRole('button', {
+        name: 'Upload PNG / JPEG',
+    });
+    const pngA = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAF',
+        'base64',
+    );
+    const pngB = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAcAAAAF',
+        'base64',
+    );
 
     await logoInput.setInputFiles({
         name: 'logo-a.png',
@@ -157,7 +172,9 @@ test('logo upload keeps the optimistic version in sync for repeat uploads', asyn
     await uploadButton.click();
 
     await expect(page.getByRole('alert')).toContainText('Logo saved');
-    await expect(page.getByText('This record changed in another window')).toHaveCount(0);
+    await expect(
+        page.getByText('This record changed in another window'),
+    ).toHaveCount(0);
 });
 
 test('report filters preserve named business dimensions in the URL', async ({
@@ -192,7 +209,9 @@ test('native history navigation is covered by the dirty-form guard', async ({
         await confirmation.dismiss();
     });
     // A dismissed beforeunload cancels navigation, so no DOMContentLoaded follows.
-    await page.goBack({ waitUntil: 'domcontentloaded', timeout: 2000 }).catch(() => null);
+    await page
+        .goBack({ waitUntil: 'domcontentloaded', timeout: 2000 })
+        .catch(() => null);
 
     expect(prompted).toBeTruthy();
     await expect(page).toHaveURL(/\/studio\/configuration$/);

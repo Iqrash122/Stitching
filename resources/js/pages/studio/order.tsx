@@ -8,6 +8,7 @@ import type {
     Allocation,
     Credit,
     Event,
+    Field,
     Payment,
 } from './types';
 import {
@@ -963,8 +964,12 @@ function MeasurementEditor({
                             .sort((a, b) => a.sequence - b.sequence)
                             .map((f) => {
                                 if (f.depends_on) {
-                                    const parentVal = form.data.values[f.depends_on];
-                                    const isParentActive = parentVal && parentVal !== 'no' && parentVal !== '';
+                                    const parentVal =
+                                        form.data.values[f.depends_on];
+                                    const isParentActive =
+                                        parentVal &&
+                                        parentVal !== 'no' &&
+                                        parentVal !== '';
                                     if (!isParentActive) {
                                         return null;
                                     }
@@ -973,7 +978,9 @@ function MeasurementEditor({
                                 return (
                                     <label
                                         key={f.code}
-                                        className={f.checkbox ? 'check-label' : ''}
+                                        className={
+                                            f.checkbox ? 'check-label' : ''
+                                        }
                                     >
                                         <span>
                                             {f.label}
@@ -1006,7 +1013,10 @@ function MeasurementEditor({
                                         ) : f.type === 'choice' ? (
                                             <select
                                                 disabled={closed}
-                                                value={form.data.values[f.code] || 'no'}
+                                                value={
+                                                    form.data.values[f.code] ||
+                                                    'no'
+                                                }
                                                 {...fieldErrorProps(
                                                     form.errors,
                                                     `values.${f.code}`,
@@ -1030,7 +1040,10 @@ function MeasurementEditor({
                                         ) : f.type === 'text' ? (
                                             <textarea
                                                 disabled={closed}
-                                                value={form.data.values[f.code] || ''}
+                                                value={
+                                                    form.data.values[f.code] ||
+                                                    ''
+                                                }
                                                 rows={f.depends_on ? 2 : 4}
                                                 placeholder={f.label}
                                                 {...fieldErrorProps(
@@ -1040,7 +1053,8 @@ function MeasurementEditor({
                                                 onChange={(e) =>
                                                     form.setData('values', {
                                                         ...form.data.values,
-                                                        [f.code]: e.target.value,
+                                                        [f.code]:
+                                                            e.target.value,
                                                     })
                                                 }
                                             />
@@ -1050,7 +1064,10 @@ function MeasurementEditor({
                                                 type="number"
                                                 step="any"
                                                 placeholder="انچ میں عدد"
-                                                value={form.data.values[f.code] || ''}
+                                                value={
+                                                    form.data.values[f.code] ||
+                                                    ''
+                                                }
                                                 {...fieldErrorProps(
                                                     form.errors,
                                                     `values.${f.code}`,
@@ -1058,12 +1075,15 @@ function MeasurementEditor({
                                                 onChange={(e) =>
                                                     form.setData('values', {
                                                         ...form.data.values,
-                                                        [f.code]: e.target.value,
+                                                        [f.code]:
+                                                            e.target.value,
                                                     })
                                                 }
                                             />
                                         )}
-                                        <small className="muted">{f.help}</small>
+                                        <small className="muted">
+                                            {f.help}
+                                        </small>
                                         <FieldError
                                             errors={form.errors}
                                             name={`values.${f.code}`}

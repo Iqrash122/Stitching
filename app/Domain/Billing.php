@@ -117,11 +117,12 @@ final class Billing
             }
             $sourceLines = $o->lines()->get()->map(fn ($l) => $l->only(['id', 'description', 'category', 'quantity', 'unit_price', 'offered_price', 'price_source', 'discount_type', 'discount_value', 'taxes', 'totals', 'instructions']))->all();
             $normalize = function ($v) use (&$normalize) {
-                $v = json_decode(json_encode($v), true);
+                $v = json_decode(json_encode($v, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR);
                 if (is_array($v)) {
                     ksort($v);
                     $v = array_map($normalize, $v);
                 }
+
                 return $v;
             };
             if ($i->customer_id !== $o->customer_id || $i->contact !== $o->contact || $normalize($i->lines) !== $normalize($sourceLines)) {
